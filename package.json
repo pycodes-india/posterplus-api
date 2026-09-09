@@ -1,0 +1,10 @@
+{
+  "name": "posterplus",
+  "version": "1.0.0",
+  "description": "PosterPlus Pro Edition",
+  "main": "index.html",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {}
+}

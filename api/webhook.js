@@ -1,13 +1,28 @@
 import admin from 'firebase-admin';
 import crypto from 'crypto';
 
-// Firebase Admin को इनिशियलाइज़ करना (सिर्फ एक बार)
+// 1. Vercel को बताना कि Body को खुद JSON में ना बदले (ताकि हमें असली Raw Data मिल सके)
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+// Raw Body पढ़ने का फंक्शन
+async function getRawBody(readable) {
+  const chunks = [];
+  for await (const chunk of readable) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+// Firebase Admin इनिशियलाइज़ेशन
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      // Vercel में Private Key के \n को सही से लाइन ब्रेक में बदलने के लिए
       privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
     }),
   });
@@ -21,47 +36,52 @@ export default async function handler(req, res) {
   }
 
   try {
-    const rawBody = JSON.stringify(req.body);
+    // 2. असली Raw Body निकालें
+    const rawBodyBuffer = await getRawBody(req);
+    const rawBodyString = rawBodyBuffer.toString('utf8');
+    
+    // 3. Headers निकालें (Cashfree में Timestamp भी चाहिए होता है)
     const signature = req.headers['x-webhook-signature'];
+    const timestamp = req.headers['x-webhook-timestamp'];
     const secretKey = process.env.CASHFREE_SECRET_KEY;
 
-    // 1. सुरक्षा जाँच: क्या यह रिक्वेस्ट सच में Cashfree से आई है?
+    if (!signature || !timestamp) {
+        return res.status(400).send('Missing Signature or Timestamp');
+    }
+
+    // 4. नया सिग्नेचर बनाना (Timestamp + Raw Body)
+    const dataToVerify = timestamp + rawBodyString;
     const generatedSignature = crypto
       .createHmac('sha256', secretKey)
-      .update(req.rawBody || rawBody)
+      .update(dataToVerify)
       .digest('base64');
 
-    // (अगर सिग्नेचर मैच नहीं होता है, तो हैकर ने रिक्वेस्ट भेजी है)
+    // 5. मैचिंग चेक करें
     if (signature !== generatedSignature) {
       console.error("Signature Mismatch! Possible hacking attempt.");
       return res.status(401).send('Invalid Signature');
     }
 
-    const event = req.body;
+    // अब सुरक्षित रूप से बॉडी को JSON में बदल सकते हैं
+    const event = JSON.parse(rawBodyString);
 
-    // 2. चेक करें कि क्या पेमेंट सक्सेसफुल (PAID) है?
+    // 6. डेटाबेस अपडेट करें
     if (event.type === 'PAYMENT_SUCCESS_WEBHOOK' && event.data.payment.payment_status === 'SUCCESS') {
-      
-      // 3. कस्टमर ID निकालें (यह वही Firebase UID है जो हमने frontend से भेजी थी)
       const userId = event.data.order.customer_details.customer_id;
-
-      // 4. Firebase में 30 दिन (Milliseconds) का टाइम जोड़ें
       const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
       const newExpiryDate = Date.now() + thirtyDaysInMs;
 
       console.log(`Updating Subscription for User: ${userId}`);
 
-      // 5. यूज़र का डेटाबेस अपडेट करें
       await db.collection('clients').doc(userId).set({
         subscriptionExpiry: newExpiryDate,
         lastPaymentAmount: event.data.payment.payment_amount,
         lastPaymentTime: new Date().toISOString()
-      }, { merge: true }); // merge: true का मतलब है कि पुराना डेटा डिलीट नहीं होगा, बस नया अपडेट होगा
+      }, { merge: true });
 
       return res.status(200).send('Webhook Received & DB Updated Successfully');
     }
 
-    // अगर कोई और इवेंट है (जैसे Payment Failed), तो कुछ मत करो
     res.status(200).send('Webhook Received, no action taken.');
 
   } catch (error) {

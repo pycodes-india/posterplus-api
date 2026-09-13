@@ -67,7 +67,7 @@ export default async function handler(req, res) {
 
     // 6. डेटाबेस अपडेट करें
     if (event.type === 'PAYMENT_SUCCESS_WEBHOOK' && event.data.payment.payment_status === 'SUCCESS') {
-      const userId = event.data.order.customer_details.customer_id;
+      const userId = event.data.customer_details.customer_id;
       const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
       const newExpiryDate = Date.now() + thirtyDaysInMs;
 

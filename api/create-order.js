@@ -47,8 +47,8 @@ export default async function handler(req, res) {
   };
 
   try {
-    // Cashfree Sandbox (Test) API पर रिक्वेस्ट भेजना
-    const response = await fetch('https://sandbox.cashfree.com/pg/orders', options);
+    // Cashfree Sandbox (production) API पर रिक्वेस्ट भेजना
+    const response = await fetch('https://api.cashfree.com/pg/orders', options);
     const data = await response.json();
     
     // फ्रंटएंड को डेटा वापस भेजना

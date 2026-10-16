@@ -1,7 +1,7 @@
 // File: api/create-order.js
 
 export default async function handler(req, res) {
-  // CORS Headers (ताकि आपकी वेबसाइट से रिक्वेस्ट आ सके)
+  // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*'); 
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -30,7 +30,8 @@ export default async function handler(req, res) {
       'x-client-secret': process.env.CASHFREE_SECRET_KEY
     },
     body: JSON.stringify({
-      order_amount: req.body.amount, 
+      // ✅ सुरक्षा के लिए अमाउंट को यहाँ सर्वर पर ही फिक्स कर दिया गया है (₹49.00)
+      order_amount: 49.00, 
       order_currency: 'INR',
       order_id: orderId,
       customer_details: {
@@ -40,14 +41,14 @@ export default async function handler(req, res) {
         customer_name: req.body.name || 'PosterPlus User'
       },
       order_meta: {
-        // पेमेंट पूरा होने के बाद यूज़र वापस कहाँ जाएगा (आपकी वेबसाइट का लिंक)
+        // पेमेंट पूरा होने के बाद यूज़र वापस कहाँ जाएगा
         return_url: 'https://posterplus.pycodes.in/?order_id={order_id}' 
       }
     })
   };
 
   try {
-    // Cashfree Sandbox (production) API पर रिक्वेस्ट भेजना
+    // Cashfree Production API पर रिक्वेस्ट भेजना
     const response = await fetch('https://api.cashfree.com/pg/orders', options);
     const data = await response.json();
     

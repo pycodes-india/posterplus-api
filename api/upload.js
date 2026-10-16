@@ -12,12 +12,26 @@ if (!getApps().length) {
 }
 
 export default async function handler(req, res) {
+  // 1. CORS Headers Set Karein (Taaki browser block na kare)
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Ya apna exact frontend domain likhein jaise 'https://posterplus.pycodes.in'
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
+  );
+
+  // Preflight OPTIONS request handle karne ke liye
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // 1. Firebase Auth Token Verification
+    // 2. Firebase Auth Token Verification
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: "Unauthorized: No token provided" });
@@ -30,7 +44,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "No image provided" });
     }
 
-    // 2. Server-side File Type & Size Validation (Max 2MB)
+    // 3. Server-side File Type & Size Validation (Max 2MB)
     const matches = imageBase64.match(/^data:image\/([a-zA-Z+-]+);base64,(.+)$/);
     if (!matches) {
       return res.status(400).json({ error: "Invalid image format" });
@@ -46,8 +60,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "File too large (Max 2MB)" });
     }
 
-    // 3. Forward to ImgBB securely
+    // 4. Forward to ImgBB securely
     const apiKey = process.env.IMGBB_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "Server configuration error: ImgBB key missing" });
+    }
+
     const formData = new URLSearchParams();
     formData.append('key', apiKey);
     formData.append('image', matches[2]);
@@ -61,9 +79,10 @@ export default async function handler(req, res) {
     if (data.success) {
       return res.status(200).json({ url: data.data.url });
     } else {
-      return res.status(500).json({ error: 'ImgBB upload failed' });
+      return res.status(500).json({ error: data.error?.message || 'ImgBB upload failed' });
     }
   } catch (error) {
+    console.error("Upload error:", error);
     return res.status(401).json({ error: "Authentication failed or server error" });
   }
 }
